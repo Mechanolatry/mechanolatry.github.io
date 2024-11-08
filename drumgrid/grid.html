@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dynamic Grid Highlight</title>
+    <title>Drum Grid</title>
     <style>
         body {
             font-family: Verdana, sans-serif;
@@ -64,9 +64,10 @@
                 const params = new URLSearchParams(window.location.search);
                 const cellTexts = [];
                 let numColumns = 0;
+                let tempo = params.get('tempo') ? parseInt(params.get('tempo')) : 120;
 
                 params.forEach((value, key) => {
-                    if (key === 'url') return; // Ignore 'url' parameter
+                    if (key === 'tempo') return; // Ignore 'tempo' parameter
                     if (numColumns === 0) {
                         numColumns = value.length + 1;
                     }
@@ -80,16 +81,17 @@
                     cellTexts.push(row);
                 });
 
-                return { cellTexts, numColumns, params };
+                return { cellTexts, numColumns, tempo, params };
             }
 
-            function updateQueryString(cellTexts, originalParams) {
+            function updateQueryString(cellTexts, originalParams, bpm) {
                 const params = new URLSearchParams(originalParams);
                 cellTexts.forEach(row => {
                     const key = row[0];
                     const value = row.slice(1).map(char => char === '' ? '_' : char === '&' ? '~' : char).join('');
                     params.set(key, value);
                 });
+                params.set('tempo', bpm);
                 history.replaceState(null, '', '?' + params.toString());
             }
 
@@ -117,7 +119,7 @@
                             cell.contentEditable = true; // Make cell editable
                             cell.addEventListener('input', function() {
                                 cellTexts[row][col] = cell.textContent;
-                                updateQueryString(cellTexts, originalParams);
+                                updateQueryString(cellTexts, originalParams, bpm);
                             });
                         }
                         grid.appendChild(cell);
@@ -126,35 +128,39 @@
             }
 
             function increaseColumns() {
-                const { cellTexts, numColumns, params } = getQueryParams();
+                const { cellTexts, numColumns, tempo, params } = getQueryParams();
                 cellTexts.forEach(row => {
                     row.push('');
                 });
-                updateQueryString(cellTexts, params);
+                updateQueryString(cellTexts, params, bpm);
                 location.reload(); // Reload the page to reflect changes
             }
 
             function decreaseColumns() {
-                const { cellTexts, numColumns, params } = getQueryParams();
+                const { cellTexts, numColumns, tempo, params } = getQueryParams();
                 if (numColumns > 1) {
                     cellTexts.forEach(row => {
                         row.pop();
                     });
-                    updateQueryString(cellTexts, params);
+                    updateQueryString(cellTexts, params,bpm );
                     location.reload(); // Reload the page to reflect changes
                 }
             }
 
-            const { cellTexts, numColumns, params } = getQueryParams();
+            const { cellTexts, numColumns, tempo, params } = getQueryParams();
             renderGrid(cellTexts, numColumns, params);
 
             document.getElementById('increaseColumns').addEventListener('click', increaseColumns);
             document.getElementById('decreaseColumns').addEventListener('click', decreaseColumns);
 
             let currentColumn = 2; // Start from the second column
-            let bpm = 120; // Set your desired BPM here
+            let bpm = tempo; // Set your desired BPM here
             let interval = bpmToMilliseconds(bpm);
             let intervalId;
+
+            // set value of bpm slider and input
+            document.getElementById('bpmSlider').value = bpm;
+            document.getElementById('bpmInput').value = bpm;
 
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
@@ -223,17 +229,23 @@
 
             document.getElementById('startButton').addEventListener('click', startHighlighting);
             document.getElementById('stopButton').addEventListener('click', stopHighlighting);
+            document.getElementById('resetButton').addEventListener('click', function() {
+               // reload the page to reset the grid
+                location.reload();
+            });
 
             document.getElementById('bpmSlider').addEventListener('input', function() {
                 bpm = this.value;
                 document.getElementById('bpmInput').value = bpm;
                 updateInterval();
+                updateQueryString(cellTexts, params, bpm);
             });
 
             document.getElementById('bpmInput').addEventListener('input', function() {
                 bpm = this.value;
                 document.getElementById('bpmSlider').value = bpm;
                 updateInterval();
+                updateQueryString(cellTexts, params, bpm);
             });
 
             function updateInterval() {
