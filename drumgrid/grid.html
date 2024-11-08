@@ -118,6 +118,9 @@
                             cell.textContent = cellTexts[row][col]; // Add text to each cell
                             cell.contentEditable = true; // Make cell editable
                             cell.addEventListener('input', function() {
+                                if (cell.textContent.length > 1) {
+                                cell.textContent = cell.textContent.charAt(0); // Limit to 1 character
+                            }
                                 cellTexts[row][col] = cell.textContent;
                                 updateQueryString(cellTexts, originalParams, bpm);
                             });
