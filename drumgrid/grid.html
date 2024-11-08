@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Grid Highlight</title>
+    <style>
+        body {
+            font-family: Verdana, sans-serif;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 1px;
+            width: 900px; /* Adjusted width to fit 9 cells of 100px each */
+        }
+        .cell {
+            width: 100px;
+            height: 100px;
+            border: 1px solid #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: Verdana, sans-serif;
+            font-size: 24px;
+            color: black;
+            transition: background-color 75ms ease-in-out;
+            cursor: pointer;
+        }
+        .first-row {
+            font-size: 18px;
+            color: darkgrey;
+        }
+        .highlight {
+            background-color: orange;
+        }
+        .highlight-number {
+            color: black !important;
+            font-size: 21px !important; /* 18px * 1.25 = 21px */
+            font-weight: bold !important;
+        }
+        .controls {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <button id="startButton">Start</button>
+        <button id="stopButton">Stop</button>
+        <button id="resetButton">Reset</button>
+        <label for="bpmSlider">BPM:</label>
+        <input type="range" id="bpmSlider" min="30" max="300" value="120">
+        <input type="number" id="bpmInput" min="30" max="300" value="120">
+        <label for="audioToggle">Enable Audio:</label>
+        <input type="checkbox" id="audioToggle" checked>
+        <button id="increaseColumns">+ Column</button>
+        <button id="decreaseColumns">- Column</button>
+    </div>
+    <div class="grid" id="grid">
+        <!-- Generate dynamic grid cells -->
+        <script>
+            function getQueryParams() {
+                const params = new URLSearchParams(window.location.search);
+                const cellTexts = [];
+                let numColumns = 0;
+
+                params.forEach((value, key) => {
+                    if (key === 'url') return; // Ignore 'url' parameter
+                    if (numColumns === 0) {
+                        numColumns = value.length + 1;
+                    }
+                    const row = [key, ...value.split('').map(char => char === '_' ? '' : char === '~' ? '&' : char)];
+                    while (row.length < numColumns) {
+                        row.push('');
+                    }
+                    if (row.length > numColumns) {
+                        row.length = numColumns;
+                    }
+                    cellTexts.push(row);
+                });
+
+                return { cellTexts, numColumns, params };
+            }
+
+            function updateQueryString(cellTexts, originalParams) {
+                const params = new URLSearchParams(originalParams);
+                cellTexts.forEach(row => {
+                    const key = row[0];
+                    const value = row.slice(1).map(char => char === '' ? '_' : char === '&' ? '~' : char).join('');
+                    params.set(key, value);
+                });
+                history.replaceState(null, '', '?' + params.toString());
+            }
+
+            function renderGrid(cellTexts, numColumns, originalParams) {
+                const grid = document.getElementById('grid');
+                grid.innerHTML = ''; // Clear existing grid
+                grid.style.gridTemplateColumns = `repeat(${numColumns}, 100px)`;
+
+                for (let row = 0; row < cellTexts.length; row++) {
+                    for (let col = 0; col < cellTexts[row].length; col++) {
+                        const cell = document.createElement('div');
+                        cell.className = 'cell';
+                        if (row === 0) {
+                            cell.classList.add('first-row');
+                        }
+                        if (col === 0 && cellTexts[row][col] !== '') {
+                            const img = document.createElement('img');
+                            img.src = `${cellTexts[row][col]}.png`;
+                            img.alt = `Image ${row + 1}`;
+                            img.style.width = '60%';
+                            img.style.height = '60%';
+                            cell.appendChild(img);
+                        } else {
+                            cell.textContent = cellTexts[row][col]; // Add text to each cell
+                            cell.contentEditable = true; // Make cell editable
+                            cell.addEventListener('input', function() {
+                                cellTexts[row][col] = cell.textContent;
+                                updateQueryString(cellTexts, originalParams);
+                            });
+                        }
+                        grid.appendChild(cell);
+                    }
+                }
+            }
+
+            function increaseColumns() {
+                const { cellTexts, numColumns, params } = getQueryParams();
+                cellTexts.forEach(row => {
+                    row.push('');
+                });
+                updateQueryString(cellTexts, params);
+                location.reload(); // Reload the page to reflect changes
+            }
+
+            function decreaseColumns() {
+                const { cellTexts, numColumns, params } = getQueryParams();
+                if (numColumns > 1) {
+                    cellTexts.forEach(row => {
+                        row.pop();
+                    });
+                    updateQueryString(cellTexts, params);
+                    location.reload(); // Reload the page to reflect changes
+                }
+            }
+
+            const { cellTexts, numColumns, params } = getQueryParams();
+            renderGrid(cellTexts, numColumns, params);
+
+            document.getElementById('increaseColumns').addEventListener('click', increaseColumns);
+            document.getElementById('decreaseColumns').addEventListener('click', decreaseColumns);
+
+            let currentColumn = 2; // Start from the second column
+            let bpm = 120; // Set your desired BPM here
+            let interval = bpmToMilliseconds(bpm);
+            let intervalId;
+
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+            function bpmToMilliseconds(bpm) {
+                return (60 / bpm) * 1000/2;
+            }
+
+            function playMetronomeSound(frequency) {
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime); // Set frequency
+                gainNode.gain.setValueAtTime(1, audioContext.currentTime); // Set volume
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.1); // Fade out
+
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.1);
+            }
+
+            function highlightColumn() {
+                // Remove highlight from all cells
+                document.querySelectorAll('.cell').forEach(cell => cell.classList.remove('highlight', 'highlight-number'));
+
+                // Highlight the current column
+                for (let row = 0; row < cellTexts.length; row++) {
+                    const cellIndex = row * numColumns + currentColumn - 1;
+                    const cell = document.querySelectorAll('.cell')[cellIndex];
+                    cell.classList.add('highlight');
+
+                    // Check if the cell is in the first row and contains a number
+                    if (row === 0 && !isNaN(cell.textContent) && cell.textContent.trim() !== "") {
+                        cell.classList.add('highlight-number');
+                        const number = parseInt(cell.textContent.trim());
+                        const audioToggle = document.getElementById('audioToggle').checked;
+                        if (audioToggle) {
+                            if (number === 1) {
+                                playMetronomeSound(880); // Higher pitch for number 1
+                            } else {
+                                playMetronomeSound(440); // Default pitch for other numbers
+                            }
+                        }
+                    }
+                }
+
+                // Move to the next column
+                currentColumn++;
+                if (currentColumn > numColumns) {
+                    currentColumn = 2; // Skip the first column
+                }
+            }
+
+            function startHighlighting() {
+                if (!intervalId) {
+                    intervalId = setInterval(highlightColumn, interval);
+                }
+            }
+
+            function stopHighlighting() {
+                clearInterval(intervalId);
+                intervalId = null;
+            }
+
+            document.getElementById('startButton').addEventListener('click', startHighlighting);
+            document.getElementById('stopButton').addEventListener('click', stopHighlighting);
+
+            document.getElementById('bpmSlider').addEventListener('input', function() {
+                bpm = this.value;
+                document.getElementById('bpmInput').value = bpm;
+                updateInterval();
+            });
+
+            document.getElementById('bpmInput').addEventListener('input', function() {
+                bpm = this.value;
+                document.getElementById('bpmSlider').value = bpm;
+                updateInterval();
+            });
+
+            function updateInterval() {
+                interval = bpmToMilliseconds(bpm);
+                if (intervalId) {
+                    clearInterval(intervalId);
+                    intervalId = setInterval(highlightColumn, interval);
+                }
+            }
+        </script>
+    </div>
+</body>
+</html>
